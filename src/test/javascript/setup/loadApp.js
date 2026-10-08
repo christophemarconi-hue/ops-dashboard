@@ -19,6 +19,7 @@ const REGISTERED_IDS = [
   'app-header',
   'app-title',
   'app-subtitle',
+  'theme-toggle',
   'range-form',
   'range-from',
   'range-to',
@@ -155,11 +156,23 @@ function createFakeApi(overrides) {
 }
 
 /**
+ * Clear what loadApp() cannot reset by replacing the body: the data-theme attribute on
+ * <html> and localStorage. Then seed localStorage with the entries given, if any.
+ */
+function resetBrowserState(storage) {
+  document.documentElement.removeAttribute('data-theme');
+  window.localStorage.clear();
+  Object.keys(storage || {}).forEach((key) => window.localStorage.setItem(key, storage[key]));
+}
+
+/**
  * Load the page and start the app against a fake API. `overrides` replaces any of the
- * fixtures by name (health, kpis, onTime, late, ticketsByCategory, vendors, failing).
+ * fixtures by name (health, kpis, onTime, late, ticketsByCategory, vendors, failing);
+ * `overrides.localStorage` seeds localStorage before the app starts.
  * Returns { app, api, document, module } once the initial load has finished.
  */
 async function loadApp(overrides) {
+  resetBrowserState(overrides && overrides.localStorage);
   const html = readIndexHtml();
   const bodyMatch = html.match(/<body>([\s\S]*)<\/body>/);
   document.body.innerHTML = bodyMatch[1].replace(/<script[^>]*><\/script>/g, '');

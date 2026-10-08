@@ -13,6 +13,8 @@
   var DEFAULT_PRESET_DAYS = 30;
   var LATE_LIMIT = 20;
   var SVG_NS = 'http://www.w3.org/2000/svg';
+  var THEME_KEY = 'ops-dashboard.theme';
+  var DEFAULT_THEME = 'light';
 
   // ---------- API client ----------
 
@@ -102,10 +104,62 @@
     return Math.round((parseIso(iso) - parseIso(today)) / 86400000);
   }
 
+  /** 'light' and 'dark' pass through; anything else (null, a stale value) is the default. */
+  function normalizeTheme(theme) {
+    return theme === 'light' || theme === 'dark' ? theme : DEFAULT_THEME;
+  }
+
+  function otherTheme(theme) {
+    return theme === 'dark' ? 'light' : 'dark';
+  }
+
+  // ---------- Theme (TODO-231) ----------
+  // Colours live in style.css as CSS variables per data-theme; here we only pick the theme.
+
+  /** window.localStorage, or null where reading it throws (blocked site data). */
+  function storageOf(document) {
+    try {
+      return document.defaultView ? document.defaultView.localStorage : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function readTheme(storage) {
+    try {
+      return normalizeTheme(storage ? storage.getItem(THEME_KEY) : null);
+    } catch (e) {
+      return DEFAULT_THEME;
+    }
+  }
+
+  function saveTheme(storage, theme) {
+    try {
+      if (storage) {
+        storage.setItem(THEME_KEY, theme);
+      }
+    } catch (e) {
+      // Not persisted; the theme still applies to this page.
+    }
+  }
+
+  /** Set data-theme on <html> and label the toggle with the theme a click would give. */
+  function applyTheme(document, theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    var button = document.getElementById('theme-toggle');
+    if (button) {
+      var next = otherTheme(theme);
+      var name = next.charAt(0).toUpperCase() + next.slice(1);
+      button.textContent = name + ' theme';
+      button.setAttribute('aria-label', 'Switch to ' + next + ' theme');
+    }
+  }
+
   // ---------- App ----------
 
   function initApp(document, fetchImpl) {
     var api = createApi(fetchImpl);
+    var storage = storageOf(document);
 
     var els = {
       status: document.getElementById('status-line'),
@@ -122,7 +176,8 @@
       chartOnTime: document.getElementById('chart-on-time'),
       chartTickets: document.getElementById('chart-tickets'),
       lateBody: document.getElementById('late-body'),
-      vendors: document.getElementById('vendors-list')
+      vendors: document.getElementById('vendors-list'),
+      themeToggle: document.getElementById('theme-toggle')
     };
 
     var state = {
@@ -136,7 +191,8 @@
       tickets: [],
       vendors: [],
       error: null,
-      vendorsError: null
+      vendorsError: null,
+      theme: readTheme(storage)
     };
 
     function svgEl(name, attrs, text) {
@@ -345,6 +401,15 @@
       });
     });
 
+    function toggleTheme() {
+      state.theme = otherTheme(state.theme);
+      applyTheme(document, state.theme);
+      saveTheme(storage, state.theme);
+    }
+
+    applyTheme(document, state.theme);
+    els.themeToggle.addEventListener('click', toggleTheme);
+
     var ready = api.health().then(function (health) {
       state.today = health.today;
       var range = applyPreset(DEFAULT_PRESET_DAYS, state.today);
@@ -359,6 +424,7 @@
       state: state,
       load: load,
       selectPreset: selectPreset,
+      toggleTheme: toggleTheme,
       api: api
     };
   }
@@ -372,13 +438,18 @@
     formatMoney: formatMoney,
     barWidths: barWidths,
     applyPreset: applyPreset,
-    daysUntil: daysUntil
+    daysUntil: daysUntil,
+    normalizeTheme: normalizeTheme,
+    otherTheme: otherTheme
   };
 
   if (typeof module !== 'undefined') {
     module.exports = exported;
   } else if (root.document) {
     root.OpsDashboard = exported;
+    // app.js loads at the end of <body>: apply the stored theme now, before
+    // DOMContentLoaded, so a dark-theme user does not see a light page first.
+    applyTheme(root.document, readTheme(storageOf(root.document)));
     root.document.addEventListener('DOMContentLoaded', function () {
       root.OpsDashboard.app = initApp(root.document, root.fetch.bind(root));
     });
