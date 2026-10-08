@@ -6,18 +6,19 @@ import java.time.LocalDate;
 /**
  * A closed date range for the query endpoints.
  *
- * Both bounds default to "the last 30 days ending today". There is deliberately no
- * validation here: a malformed date throws from {@link LocalDate#parse} and surfaces as
- * a 500, and {@code from} after {@code to} simply matches nothing. See TODO-232.
+ * Both bounds default to "the last 30 days ending today". {@link #resolve} checks its
+ * input (strict ISO dates, {@code from} on or before {@code to}, at most 366 days
+ * counted inclusively) and throws {@link InvalidRequestException} listing every
+ * problem; see {@link QueryParams} and TODO-232. The constructor itself does not check.
  */
 public record DateRange(LocalDate from, LocalDate to) {
 
     public static final int DEFAULT_DAYS = 30;
 
     public static DateRange resolve(String from, String to, Clock clock) {
-        LocalDate today = LocalDate.now(clock);
-        LocalDate end = to == null || to.isBlank() ? today : LocalDate.parse(to);
-        LocalDate start = from == null || from.isBlank() ? today.minusDays(DEFAULT_DAYS) : LocalDate.parse(from);
-        return new DateRange(start, end);
+        QueryParams params = new QueryParams();
+        DateRange range = params.dateRange(from, to, clock);
+        params.throwIfInvalid();
+        return range;
     }
 }
